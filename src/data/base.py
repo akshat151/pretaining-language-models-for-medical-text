@@ -15,6 +15,8 @@ class BaseDataset(ABC):
         self.train_data = None
         self.val_data = None
         self.test_data = None
+        self.embedding_type = None
+        self.embedding_model = None
 
     @abstractmethod
     def __len__(self):
@@ -48,20 +50,20 @@ class BaseDataset(ABC):
     #     pass
 
     @abstractmethod
-    def pre_process(self):
+    def preprocess(self):
         """
         Abstract method for dataset-specific preprocessing.
         This method must be implemented by the subclass.
         """
         pass
 
-    # @abstractmethod
-    # def tokenize(self, tokenizer):
-    #     """
-    #     Abstract method to tokenize the text data.
-    #     This method must be implemented by the subclass.
-    #     """
-    #     pass
+    @abstractmethod
+    def tokenize(self, tokenizer):
+        """
+        Abstract method to tokenize the text data.
+        This method must be implemented by the subclass.
+        """
+        pass
 
     @abstractmethod
     def split_dataset(self):

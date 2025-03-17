@@ -1,5 +1,10 @@
 import shutil
-from typing import Tuple, Union
+from typing import List, Tuple, Union
+import torch.nn as nn
+
+from tokenizer.factory import TokenizerFactory
+from ..models.embedding.pretrained_embedding import PretrainedEmbedding
+from ..models.embedding.custom_embedding import CustomEmbedding
 
 import spacy
 from .base import BaseDataset
@@ -22,6 +27,22 @@ class MeDALSubset(BaseDataset):
     def __init__(self, name):
         super().__init__(name)
         print(f'MeDAL dataset initialized with name: {self.name}')
+
+
+    def _initialize_embedding_model(self) -> nn.Module:
+        """
+        Initializes the embedding model based on the embedding type.
+        """
+        if self.embedding_type == 'custom':
+            vocab_size = 10000  # Example vocab size
+            embedding_dim = 300  # Example embedding dimension
+            return CustomEmbedding(vocab_size, embedding_dim)
+        elif self.embedding_type == 'pretrained':
+            return PretrainedEmbedding(model_name='bert-base-uncased')
+        else:
+            raise ValueError("Invalid embedding type. Choose between 'custom' or 'pretrained'.")
+
+
 
     def load_dataset(self) -> pd.DataFrame:
         """
@@ -93,7 +114,7 @@ class MeDALSubset(BaseDataset):
 
         return processed_data
     
-    
+
     def _preprocess_split(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Performs basic pre-processing on the dataset like replacing location
@@ -111,6 +132,7 @@ class MeDALSubset(BaseDataset):
             text: str = sample['TEXT']
 
             # Convert location to actual abbreviation. TODO: Should it be capital or small???
+            # Leaving it as is for now
             words = text.split()
             abbreviation = words[sample['ABBREVIATION']]
             data.loc[idx, 'ABBREVIATION'] = abbreviation  # Modify the correct column
@@ -151,7 +173,7 @@ class MeDALSubset(BaseDataset):
 
         processed_splits = []
 
-        if len(splits) > 3:
+        if len(splits) > 3 or len(splits) < 1:
             raise ValueError('Invalid number of splits passed!')
 
         for split in splits:
@@ -173,3 +195,69 @@ class MeDALSubset(BaseDataset):
             return tuple(processed_splits)
         else:
             return tuple(processed_splits)
+        
+
+    def tokenize(self, tokenizer_type: str, splits = ['train'], tokenizer=None) -> Union[List[str], 
+                                                                                         Tuple[List[str], List[str]], 
+                                                                                         Tuple[List[str], List[str], List[str]]
+                                                                                         ]:
+        """
+        Tokenizes the dataset based on the specified tokenizer type and the given splits (e.g., train, valid, test).
+
+        Parameters:
+        - tokenizer_type (str): The type of tokenization to apply. Choices are:
+            - 'whitespace': Tokenizes the text based on whitespace.
+            - 'characters': Tokenizes the text into individual characters.
+            - 'nltk': Tokenizes the text using NLTK's word_tokenize method.
+            - 'pretrained': Tokenizes the text using a pretrained tokenizer from HuggingFace's Transformers library.
+        - splits (list): A list of dataset splits to tokenize. Can contain any of the following:
+            - 'train': Tokenize the training set.
+            - 'valid': Tokenize the validation set.
+            - 'test': Tokenize the test set.
+            Default is ['train'].
+        - tokenizer (str or None): If using a pretrained tokenizer (i.e., 'pretrained' tokenizer_type), provide the model name (e.g., 'bert-base-uncased').
+            Otherwise, set to None. This argument is ignored for other tokenization types.
+
+        Returns:
+        - List[str]: A list of tokenized text for the selected dataset split(s).
+            If multiple are provided, it returns a tuple of tokenized lists.
+        
+        Example:
+        >>> tokenizer = Tokenizer()
+        >>> tokenized_data = tokenizer.tokenize('whitespace', splits=['train', 'valid'])
+        >>> print(tokenized_data)
+
+        This function will tokenize the 'train' and 'valid' datasets using whitespace tokenization.
+        """
+
+
+        if len(splits) > 3 or len(splits) < 1:
+            raise ValueError('Invalid number of splits passed!')
+
+        tokenized_splits = []
+
+        tokenizer_instance = TokenizerFactory.get_tokenizer(tokenizer_type, pretrained_model=tokenizer)
+
+        for split in splits:
+            if split == 'train':
+                data = self.train_data
+            elif split == 'valid':
+                data = self.val_data
+            elif split == 'test':
+                data = self.test_data
+            else:
+                raise ValueError('Invalid split passed. Refer to func. documentation.')
+
+            text_data = data['TEXT']
+
+            tokenized_data = [tokenizer_instance.tokenize(text) for text in text_data]
+            tokenized_splits.append(tokenized_data)
+
+        if len(splits) == 1:
+            return tokenized_splits[0]
+        elif len(splits) == 2:
+            return tuple(tokenized_splits)
+        else:
+            return tuple(tokenized_splits)
+
+
