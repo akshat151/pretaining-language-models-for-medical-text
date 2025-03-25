@@ -1,5 +1,5 @@
 from typing import List
-from tokenizer.base import Tokenizer
+from .base import Tokenizer
 
 
 class CharacterTokenizer(Tokenizer):

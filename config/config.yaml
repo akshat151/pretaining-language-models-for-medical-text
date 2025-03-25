@@ -1,0 +1,4 @@
+embedding_models:
+  bio_wordvec: 
+    model_path: 'trained_models/embeddings/pretrained/bio_wordvec_200.bin'
+    doc_vector_technique: 'average' # Options: [average, max, sum, normal (l2 norm)]

@@ -1,11 +1,12 @@
 import shutil
-from typing import List, Tuple, Union
+from typing import List, Tuple, Union, Any
 import torch.nn as nn
 
-from tokenizer.factory import TokenizerFactory
+from ..tokenizer.factory import TokenizerFactory
 from ..models.embedding.pretrained_embedding import PretrainedEmbedding
 from ..models.embedding.custom_embedding import CustomEmbedding
-
+from ..vectorizer.factory import EmbeddingFactory
+# TODO: Add ruff pre-commit hooks
 import spacy
 from .base import BaseDataset
 import kagglehub
@@ -15,6 +16,9 @@ from tqdm import tqdm
 import pandas as pd
 import nltk
 from nltk.corpus import stopwords
+from pandarallel import pandarallel
+
+pandarallel.initialize(progress_bar=True)
 
 nltk.download('stopwords')
 nlp = spacy.load('en_core_web_sm')
@@ -29,22 +33,7 @@ class MeDALSubset(BaseDataset):
         print(f'MeDAL dataset initialized with name: {self.name}')
 
 
-    def _initialize_embedding_model(self) -> nn.Module:
-        """
-        Initializes the embedding model based on the embedding type.
-        """
-        if self.embedding_type == 'custom':
-            vocab_size = 10000  # Example vocab size
-            embedding_dim = 300  # Example embedding dimension
-            return CustomEmbedding(vocab_size, embedding_dim)
-        elif self.embedding_type == 'pretrained':
-            return PretrainedEmbedding(model_name='bert-base-uncased')
-        else:
-            raise ValueError("Invalid embedding type. Choose between 'custom' or 'pretrained'.")
-
-
-
-    def load_dataset(self) -> pd.DataFrame:
+    def load_dataset(self) -> Tuple[pd.DataFrame]:
         """
         Loads the MeDAL dataset from Kaggle
         """
@@ -74,7 +63,7 @@ class MeDALSubset(BaseDataset):
         self.data = pd.concat([self.train_data, self.val_data, self.test_data], ignore_index=True) 
 
         print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
-        return self.data
+        return self.data, self.train_data, self.val_data, self.test_data
 
     @staticmethod
     def lemmatizer(data: str):
@@ -117,48 +106,63 @@ class MeDALSubset(BaseDataset):
 
     def _preprocess_split(self, data: pd.DataFrame) -> pd.DataFrame:
         """
-        Performs basic pre-processing on the dataset like replacing location
-        of the word with the abbreviation, converting to lower case, removing
-        stop words, etc.
+        Performs basic pre-processing on the dataset:
+        - Renames the LOCATION column to ABBREVIATION.
+        - Uses the integer stored in the ABBREVIATION column (now preserved as 'abbr_index') 
+            to replace the corresponding word in the TEXT with its abbreviation.
+        - Converts all other words to lowercase.
+        - Performs lemmatization and stop-word removal.
+        
+        This version is optimized for large datasets (e.g., 5M rows) by:
+        1. Vectorizing what we can.
+        2. Using pandarallel to process rows in parallel.
         """
 
-        # Rename the column LOCATION to ABBREVIATION for the entire DataFrame
+        # Rename the column LOCATION to ABBREVIATION, and preserve the original abbreviation index
         data = data.rename(columns={'LOCATION': 'ABBREVIATION'})
+        # Preserve the original abbreviation index in a new column, if not already present
+        if 'abbr_index' not in data.columns:
+            data['abbr_index'] = data['ABBREVIATION']
 
-        for idx in range(len(data)):
-            # Using .loc ensures you're modifying the actual DataFrame
-            sample = data.loc[idx]  # Use .loc to access the row
-
-            text: str = sample['TEXT']
-
-            # Convert location to actual abbreviation. TODO: Should it be capital or small???
-            # Leaving it as is for now
+        # Define a function to preprocess a single row
+        def preprocess_row(row: pd.Series) -> pd.Series:
+            text: str = row['TEXT']
             words = text.split()
-            abbreviation = words[sample['ABBREVIATION']]
-            data.loc[idx, 'ABBREVIATION'] = abbreviation  # Modify the correct column
+            # Use the saved abbreviation index
+            abbr_index = int(row['abbr_index'])
+            # Get the abbreviation from the words list
+            try:
+                abbreviation = words[abbr_index]
+            except IndexError:
+                abbreviation = ""
+            # Overwrite the 'ABBREVIATION' column with the actual abbreviation
+            row['ABBREVIATION'] = abbreviation
 
-            # Convert to lower case
-            text = text.lower()
+            # Build a new text by replacing the word at abbr_index with the abbreviation (as-is)
+            # and lowercasing all other words.
+            tmp_words = []
+            for i, word in enumerate(words):
+                if i == abbr_index:
+                    tmp_words.append(abbreviation)
+                else:
+                    tmp_words.append(word.lower())
+            tmp = " ".join(tmp_words).strip()
 
-            # Stemming, lemmatization, or other processing
-            text = MeDALSubset.lemmatizer(text)
+            # Apply lemmatization and stop-word removal (assumed to be static methods on MeDALSubset)
+            processed = MeDALSubset.lemmatizer(tmp)
+            processed = MeDALSubset.remove_stop_words(processed)
 
-            # Remove stop words
-            text = MeDALSubset.remove_stop_words(text)
+            row['TEXT'] = processed
+            return row
 
-            # Modify the actual 'TEXT' column in the DataFrame using .loc
-            data.loc[idx, 'TEXT'] = text
-
-        return data
+        # Use pandarallel to apply the row function in parallel
+        data = data.parallel_apply(preprocess_row, axis=1)
+        return data 
 
 
     def preprocess(self, splits=['train']) -> Union[pd.DataFrame, 
-                                                     Tuple[pd.DataFrame, 
-                                                           pd.DataFrame], 
-                                                           Tuple
-                                                           [pd.DataFrame, 
-                                                            pd.DataFrame, 
-                                                            pd.DataFrame]]:
+                                                     Tuple[pd.DataFrame, pd.DataFrame], 
+                                                     Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]]:
         """
         Performs basic pre-processing based on the splits passed.
 
@@ -168,7 +172,7 @@ class MeDALSubset(BaseDataset):
             By default, it processes the 'train' split.
 
         Example:
-        - pre_process(['train', 'valid']) will pre-process both the 'train' and 'valid' datasets.
+        >>> preprocess(['train', 'valid']) will pre-process both the 'train' and 'valid' datasets.
         """
 
         processed_splits = []
@@ -179,55 +183,63 @@ class MeDALSubset(BaseDataset):
         for split in splits:
             if split == 'train':
                 data = self.train_data
+                processed_split = self._preprocess_split(data)
+                self.train_data = processed_split  
+
             elif split == 'valid':
                 data = self.val_data
+                processed_split = self._preprocess_split(data)
+                self.val_data = processed_split
+
             elif split == 'test':
                 data = self.test_data
+                processed_split = self._preprocess_split(data)
+                self.test_data = processed_split
+
             else:
                 raise ValueError('Invalid split passed. Refer to func. documentation.')
-            
-            processed_split = self._preprocess_split(data)
+
             processed_splits.append(processed_split)
 
         if len(splits) == 1:
             return processed_splits[0]
-        elif len(splits) == 2:
-            return tuple(processed_splits)
-        else:
-            return tuple(processed_splits)
+        return tuple(processed_splits)
         
 
-    def tokenize(self, tokenizer_type: str, splits = ['train'], tokenizer=None) -> Union[List[str], 
+    def tokenize(self, tokenizer_type: str, splits = ['train'], **kwargs) -> Union[List[str], 
                                                                                          Tuple[List[str], List[str]], 
-                                                                                         Tuple[List[str], List[str], List[str]]
+                                                                                         Tuple[List[str], List[str], List[str]],
+                                                                                         Any
                                                                                          ]:
         """
-        Tokenizes the dataset based on the specified tokenizer type and the given splits (e.g., train, valid, test).
+        Tokenizes the dataset based on the specified tokenizer type and the given splits.
 
         Parameters:
         - tokenizer_type (str): The type of tokenization to apply. Choices are:
-            - 'whitespace': Tokenizes the text based on whitespace.
-            - 'characters': Tokenizes the text into individual characters.
-            - 'nltk': Tokenizes the text using NLTK's word_tokenize method.
-            - 'pretrained': Tokenizes the text using a pretrained tokenizer from HuggingFace's Transformers library.
-        - splits (list): A list of dataset splits to tokenize. Can contain any of the following:
-            - 'train': Tokenize the training set.
-            - 'valid': Tokenize the validation set.
-            - 'test': Tokenize the test set.
-            Default is ['train'].
-        - tokenizer (str or None): If using a pretrained tokenizer (i.e., 'pretrained' tokenizer_type), provide the model name (e.g., 'bert-base-uncased').
-            Otherwise, set to None. This argument is ignored for other tokenization types.
+            - 'whitespace': Tokenizes based on whitespace
+            - 'characters': Tokenizes into individual characters
+            - 'nltk': Uses NLTK's word_tokenize
+            - 'pretrained': Uses HuggingFace pretrained tokenizer
+            - 'trainable': Uses trainable tokenizer (BPE or WordPiece)
+
+        - splits (list): Dataset splits to tokenize ['train', 'valid', 'test']
+        
+        Kwargs for different tokenizer types:
+            For pretrained:
+                - pretrained_model (str): Name of the pretrained model
+                    Options: 'google-bert/bert-base-uncased', 
+                             'dmis-lab/biobert-v1.1', 
+                             'neuml/pubmedbert-base-embeddings'
+            
+            For trainable:
+                - corpus: Train data for the trainable algorithm ('bpe' or 'wordpeiece')
+                - algorithm (str): Tokenization algorithm ('bpe' or 'wordpiece')
+                - vocab_size (int, optional): Maximum vocabulary size. Default: 30000
+                - min_frequency (int, optional): Minimum token frequency. Default: 2
+                - special_tokens (List[str], optional): Special tokens to include
 
         Returns:
-        - List[str]: A list of tokenized text for the selected dataset split(s).
-            If multiple are provided, it returns a tuple of tokenized lists.
-        
-        Example:
-        >>> tokenizer = Tokenizer()
-        >>> tokenized_data = tokenizer.tokenize('whitespace', splits=['train', 'valid'])
-        >>> print(tokenized_data)
-
-        This function will tokenize the 'train' and 'valid' datasets using whitespace tokenization.
+            Tokenized text for selected splits (single list or tuple of lists)
         """
 
 
@@ -235,8 +247,6 @@ class MeDALSubset(BaseDataset):
             raise ValueError('Invalid number of splits passed!')
 
         tokenized_splits = []
-
-        tokenizer_instance = TokenizerFactory.get_tokenizer(tokenizer_type, pretrained_model=tokenizer)
 
         for split in splits:
             if split == 'train':
@@ -250,14 +260,78 @@ class MeDALSubset(BaseDataset):
 
             text_data = data['TEXT']
 
+        tokenizer_instance = TokenizerFactory.get_tokenizer(
+            tokenizer_type,
+            **kwargs
+        )
+
+        if tokenizer_type == 'pretrained':
+            return tokenizer_instance.tokenize()
+        else:    
             tokenized_data = [tokenizer_instance.tokenize(text) for text in text_data]
             tokenized_splits.append(tokenized_data)
 
         if len(splits) == 1:
             return tokenized_splits[0]
-        elif len(splits) == 2:
-            return tuple(tokenized_splits)
         else:
             return tuple(tokenized_splits)
+        
+
+    def embed(self, embedding_type: str, splits=['train'], tokenized_data=None, **kwargs):
+        """
+        Generate embeddings for the dataset using specified embedding type.
+        
+        Parameters:
+        - embedding_type (str): Type of embedding to use
+            Options: 'bert', 'roberta', 'bio_wordvec', 'google_news', 'trainable'
+        - splits (list): Dataset splits to embed ['train', 'valid', 'test']
+        - tokenized_data: Optional pre-tokenized data. If None, will use raw text.
+        
+        Kwargs:
+            Passed to the embedding model. See EmbeddingFactory.get_embedding for details.
+        
+        Returns:
+            Embeddings for selected splits (single array or tuple of arrays)
+        """
+        if len(splits) > 3 or len(splits) < 1:
+            raise ValueError('Invalid number of splits passed!')
+
+        embedded_splits = []
+        
+        # Get data from all required splits
+        split_data = []
+        for split in splits:
+            if split == 'train':
+                data = self.train_data['TEXT']
+                abbr = self.train_data['ABBREVIATION']
+            elif split == 'valid':
+                data = self.val_data['TEXT']
+                abbr = self.val_data['ABBREVIATION']
+            elif split == 'test':
+                data = self.test_data['TEXT']
+                abbr = self.test_data['ABBREVIATION']
+            else:
+                raise ValueError('Invalid split passed.')
+                
+            split_data.append(data.tolist())
+
+        embedding_model = EmbeddingFactory.get_embedding(
+            embedding_type=embedding_type,
+            **kwargs
+        )
+        
+        for data in split_data:
+            if embedding_type == 'bio_bert':
+                embeddings = embedding_model.embed(data, abbr)
+            elif tokenized_data is not None:
+                embeddings = embedding_model.embed(tokenized_data)
+            else:
+                embeddings = embedding_model.embed(data)
+            embedded_splits.append(embeddings)
+
+        if len(splits) == 1:
+            return embedded_splits[0]
+            
+        return tuple(embedded_splits)
 
 

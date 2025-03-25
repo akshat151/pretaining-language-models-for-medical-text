@@ -15,4 +15,38 @@ python -m spacy download en_core_web_sm
 
 ```
 
-3. 
+3. How to use Embeddings
+```python
+# Initialize dataset
+medal_dataset = MeDALSubset('MeDAL')
+medal_dataset.load_dataset()
+
+# Tokenize data (if needed)
+tokenized_data = medal_dataset.tokenize('nltk', splits=['train'])
+
+# Generate embeddings using different models:
+
+# 1. Using BERT
+bert_embeddings = medal_dataset.embed(
+    embedding_type='bert',
+    splits=['train'],
+    model_name='dmis-lab/biobert-v1.1'
+)
+
+# 2. Using BioWordVec
+bio_embeddings = medal_dataset.embed(
+    embedding_type='bio_wordvec',
+    splits=['train'],
+    model_path='trained_models/embeddings/pretrained/bio_wordvec.bin',
+    tokenized_data=tokenized_data  # Pass tokenized data
+)
+
+# 3. Using trainable embeddings
+trainable_embeddings = medal_dataset.embed(
+    embedding_type='trainable',
+    splits=['train'],
+    tokenized_corpus=tokenized_data,
+    algorithm='fasttext',
+    vector_size=100
+)
+```

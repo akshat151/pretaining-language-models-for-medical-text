@@ -58,9 +58,17 @@ class BaseDataset(ABC):
         pass
 
     @abstractmethod
-    def tokenize(self, tokenizer):
+    def tokenize(self, tokenizer_type, splits):
         """
         Abstract method to tokenize the text data.
+        This method must be implemented by the subclass.
+        """
+        pass
+
+    @abstractmethod
+    def embed(self, embedding_type, splits):
+        """
+        Abstract method to vectorize the tokenized data.
         This method must be implemented by the subclass.
         """
         pass

@@ -1,9 +1,10 @@
-from tokenizer.base import Tokenizer
-from tokenizer.character import CharacterTokenizer
-from tokenizer.nltk import NLTKTokenizer
-from tokenizer.pretrained import PretrainedTokenizer
-from tokenizer.whitespace import WhitespaceTokenizer
-
+from .base import Tokenizer
+from .character import CharacterTokenizer
+from .nltk import NLTKTokenizer
+from .pretrained import PretrainedTokenizer
+from .whitespace import WhitespaceTokenizer
+from .trainable import TrainableTokenizer
+from typing import Optional, List, Any
 
 class TokenizerFactory:
     """
@@ -14,29 +15,62 @@ class TokenizerFactory:
         'characters': CharacterTokenizer,
         'nltk': NLTKTokenizer,
         'pretrained': PretrainedTokenizer,
+        'trainable': TrainableTokenizer,
     }
 
     @staticmethod
-    def get_tokenizer(tokenizer_type: str, pretrained_model: str = None) -> Tokenizer:
+    def get_tokenizer(tokenizer_type: str, **kwargs) -> Tokenizer:
         """
         Returns an instance of the appropriate tokenizer based on the tokenizer type.
 
         Parameters:
-        - tokenizer_type (str): Type of tokenizer ('whitespace', 'characters', 'nltk', 'pretrained', etc).
-        - pretrained_model (str): The name of the pretrained tokenizer (e.g., 'bert-base-uncased') if using pretrained tokenization.
+        - tokenizer_type (str): Type of tokenizer ('whitespace', 'characters', 'nltk', 'pretrained', 'trainable')
+        
+        Kwargs for different tokenizer types:
+            For pretrained:
+                - pretrained_model (str): Name of the pretrained model
+                    Options: 'google-bert/bert-base-uncased', 'dmis-lab/biobert-v1.1', 'neuml/pubmedbert-base-embeddings'
+            
+            For trainable:
+                - corpus (List[str]): Training text corpus
+                - algorithm (str): Tokenization algorithm ('bpe' or 'wordpiece')
+                - vocab_size (int, optional): Maximum vocabulary size. Default: 30000
+                - min_frequency (int, optional): Minimum token frequency. Default: 2
+                - special_tokens (List[str], optional): Special tokens to include
 
         Returns:
         - Tokenizer: The corresponding tokenizer object.
         """
-        if tokenizer_type == 'pretrained' and pretrained_model is None:
-            raise ValueError("Please provide a pretrained model name when using pretrained tokenization.")
-        
-        if tokenizer_type in TokenizerFactory.tokenizer_map:
-            # If pretrained tokenizer, pass the model name to the PretrainedTokenizer
-            if tokenizer_type == 'pretrained':
-                return TokenizerFactory.tokenizer_map[tokenizer_type](pretrained_model)
+        if tokenizer_type not in TokenizerFactory.tokenizer_map:
+            raise ValueError(f"Unknown tokenizer type '{tokenizer_type}'. "
+                           f"Available types: {list(TokenizerFactory.tokenizer_map.keys())}")
+
+        tokenizer_class = TokenizerFactory.tokenizer_map[tokenizer_type]
+
+        if tokenizer_type == 'pretrained':
+            required_params = {'corpus', 'pretrained_model'}
+            missing_params = required_params - set(kwargs.keys())
+            if missing_params:
+                raise ValueError(f"Missing required parameters for pre-trained tokenizer: {missing_params}")
+
+
+            return tokenizer_class(
+                pretrained_model=kwargs['pretrained_model'],
+                corpus=kwargs['corpus']
+                )
+
+        elif tokenizer_type == 'trainable':
+            required_params = {'corpus', 'algorithm'}
+            missing_params = required_params - set(kwargs.keys())
+            if missing_params:
+                raise ValueError(f"Missing required parameters for trainable tokenizer: {missing_params}")
             
-            return TokenizerFactory.tokenizer_map[tokenizer_type]()
-        
-        raise ValueError(f"Unknown tokenizer type '{tokenizer_type}'\
-                        Check `tokenizer_map` for tokenizers available")
+            return tokenizer_class(
+                corpus=kwargs['corpus'],
+                algorithm=kwargs['algorithm'],
+                vocab_size=kwargs.get('vocab_size', 30000),
+                min_frequency=kwargs.get('min_frequency', 2),
+                special_tokens=kwargs.get('special_tokens')
+            )
+
+        return tokenizer_class()
