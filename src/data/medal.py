@@ -300,34 +300,46 @@ class MeDALSubset(BaseDataset):
         
         # Get data from all required splits
         split_data = []
+        split_abbr = []
+        split_ids = []
+
+
         for split in splits:
             if split == 'train':
                 data = self.train_data['TEXT']
                 abbr = self.train_data['ABBREVIATION']
+                ids = self.train_data['ABSTRACT_ID']
             elif split == 'valid':
                 data = self.val_data['TEXT']
                 abbr = self.val_data['ABBREVIATION']
+                ids = self.val_data['ABSTRACT_ID']
             elif split == 'test':
                 data = self.test_data['TEXT']
+                ids = self.test_data['ABSTRACT_ID']
                 abbr = self.test_data['ABBREVIATION']
             else:
                 raise ValueError('Invalid split passed.')
                 
             split_data.append(data.tolist())
+            split_abbr.append(abbr.tolist())
+            split_ids.append(ids.tolist())
 
         embedding_model = EmbeddingFactory.get_embedding(
             embedding_type=embedding_type,
             **kwargs
         )
         
-        for data in split_data:
+        for data, abbr, id in zip(split_data, split_abbr, split_ids, splits):
+            print(f'Embedding {split} set')
             if embedding_type == 'bio_bert':
-                embeddings = embedding_model.embed(data, abbr)
+                embeddings = embedding_model.embed(data, abbr, id)
             elif tokenized_data is not None:
                 embeddings = embedding_model.embed(tokenized_data)
             else:
                 embeddings = embedding_model.embed(data)
             embedded_splits.append(embeddings)
+
+        self.save_embeddings(embedded_splits, splits)
 
         if len(splits) == 1:
             return embedded_splits[0]

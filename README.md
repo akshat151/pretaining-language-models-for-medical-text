@@ -26,12 +26,12 @@ tokenized_data = medal_dataset.tokenize('nltk', splits=['train'])
 
 # Generate embeddings using different models:
 
-# 1. Using BERT
+# 1. Using BioBERT
 bert_embeddings = medal_dataset.embed(
-    embedding_type='bert',
+    'bio_bert', 
     splits=['train'],
-    model_name='dmis-lab/biobert-v1.1'
-)
+    model_name='dmis-lab/biobert-base-cased-v1.1'
+    )
 
 # 2. Using BioWordVec
 bio_embeddings = medal_dataset.embed(

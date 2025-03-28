@@ -1,4 +1,7 @@
 from abc import ABC, abstractmethod
+from typing import List
+import os
+import pickle
 
 class BaseDataset(ABC):
     def __init__(self, name):
@@ -80,6 +83,26 @@ class BaseDataset(ABC):
         This method must be implemented by the subclass.
         """
         pass
+
+    def save_embeddings(self, split_embeddings: List, splits: List[str], model_name: str):
+        """
+        Saves embeddings for a split into a pickle file.
+        """
+        if not os.path.exists('saved_embeddings'):
+            os.makedirs('saved_embeddings')
+
+        for embeddings, split in zip(split_embeddings, splits):
+            file_name = f'saved_embeddings/{split}_{model_name}_embeddings.pkl'
+
+            try:
+                with open(file_name, 'wb') as f:
+                    pickle.dump(embeddings, f)
+                print(f'{split} embeddings saved successfully in {file_name}\n')
+
+            except Exception as e:
+                raise ValueError(f'Error in saving embeddings! {e}')
+
+
 
     # @abstractmethod
     # def save_processed_data(self, path):

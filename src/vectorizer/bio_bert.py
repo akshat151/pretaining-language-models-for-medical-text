@@ -1,7 +1,8 @@
-from typing import List, Union, Literal
+from typing import List, Tuple, Union, Literal
 import torch
 import torch.nn as nn
 import numpy as np
+from tqdm import tqdm
 from transformers import AutoModel, AutoTokenizer
 from .base import Embedding
 
@@ -11,7 +12,7 @@ class BioBERTModel(Embedding):
     def __init__(self, 
                  model_name: str,
                  output_dim: int = 768,
-                 pooling: Literal['cls', 'mean', 'max'] = 'cls'):
+                 pooling: Literal['cls', 'mean', 'max'] = 'mean'):
         """
         Initialize BioBERT embedding model.
         
@@ -28,7 +29,7 @@ class BioBERTModel(Embedding):
         self.pooling = pooling
         self.output_dim = output_dim
         
-        # Add dimension reduction if needed
+        # Add dimension reduction if needed. Autoencoder implementation
         if output_dim != self.model.config.hidden_size:
             self.dim_reduction = nn.Linear(
                 self.model.config.hidden_size, 
@@ -37,8 +38,8 @@ class BioBERTModel(Embedding):
         else:
             self.dim_reduction = None
 
-    def _pool_tokens(self, token_embeddings: torch.Tensor, abbreviation_token_index: int = None) -> torch.Tensor:
-        """Pool token embeddings using specified strategy and focus on abbreviation."""
+    def _pool_tokens(self, token_embeddings: torch.Tensor) -> torch.Tensor:
+        """Pool token/abbr embeddings using specified strategy"""
         if self.pooling == 'cls':
             return token_embeddings[:, 0, :]  # [CLS] token (full context)
         elif self.pooling == 'mean':
@@ -48,13 +49,8 @@ class BioBERTModel(Embedding):
         else:
             raise ValueError(f"Unknown pooling type: {self.pooling}")
 
-        # If abbreviation is split into multiple subwords, pool them together.
-        if abbreviation_token_index is not None:
-            abbreviation_embedding = token_embeddings[:, abbreviation_token_index, :]
-            return abbreviation_embedding
-        return token_embeddings.mean(dim=1)  # Fallback
 
-    def embed(self, data: Union[str, List[str]], abbreviations: Union[str, List[str]]) -> List[dict]:
+    def embed(self, data: Union[str, List[str]], abbreviations: Union[str, List[str]], ids: List[int]) -> List[dict]:
         """
         Generate embeddings for input text(s), focusing on abbreviation disambiguation.
         
@@ -69,24 +65,29 @@ class BioBERTModel(Embedding):
             data = [data]
         if isinstance(abbreviations, str):
             abbreviations = [abbreviations]
-
-        all_embeddings = []
-        batch_size = 32
+        if isinstance(ids, int):
+            ids = [ids]
         
-        for i in range(0, len(data), batch_size):
-            print(i)
+
+        all_embeddings = {
+            'abstract_ids': [],
+            'context_embeddings': [],
+            'abbreviation_embeddings': [],
+        }
+
+        batch_size = 64 # TODO: pull from config
+        
+        for i in tqdm(range(0, len(data), batch_size), desc="Processing batches", unit="batch"):
             batch = data[i:i + batch_size]
             abbr_batch = abbreviations[i:i + batch_size]
+            ids_batch = ids[i: i+batch_size]
 
-            
             inputs = self.tokenizer(
                 batch,
                 padding=True,
                 truncation=True,
                 return_tensors="pt"
             ).to(self.device)
-
-            # tokenized_texts = [self.tokenizer.convert_ids_to_tokens(ids) for ids in inputs['input_ids']]
             
             with torch.no_grad():
                 # Get model outputs for entire batch
@@ -98,10 +99,19 @@ class BioBERTModel(Embedding):
                             for idx, abbr in enumerate(abbr_batch)]
                 
                 # Extract abbreviation embeddings for entire batch
-                abbreviation_embeddings = torch.stack([
-                    self._pool_tokens(token_embeddings[idx:idx+1], abbr_idx) 
-                    for idx, abbr_idx in enumerate(abbr_indices)
-                ])
+                abbreviation_embeddings = []
+                for idx, (abbr_idx, abbr_len) in enumerate(abbr_indices):
+                    if abbr_idx is not None:
+                        # Select token embeddings for the abbreviation
+                        abbr_tokens = token_embeddings[idx, abbr_idx:abbr_idx+abbr_len, :]
+                        # Pool the abbreviation tokens
+                        abbr_embedding = self._pool_tokens(abbr_tokens.unsqueeze(0))
+                        abbreviation_embeddings.append(abbr_embedding)
+                    else:
+                        # Fallback for cases where abbreviation is not found
+                        abbreviation_embeddings.append(torch.zeros(1, self.model.config.hidden_size).to(self.device))
+                
+                abbreviation_embeddings = torch.cat(abbreviation_embeddings, dim=0)
                 
                 # Extract context embeddings for entire batch
                 context_embeddings = self._pool_tokens(token_embeddings)
@@ -112,17 +122,13 @@ class BioBERTModel(Embedding):
                     context_embeddings = self.dim_reduction(context_embeddings)
                 
                 # Convert to numpy and store results
-                for idx in range(len(batch)):
-                    all_embeddings.append({
-                        'context_embedding': context_embeddings[idx].cpu().numpy(),
-                        'abbreviation_embedding': abbreviation_embeddings[idx].cpu().numpy()
-                    })
-                
+                all_embeddings['context_embeddings'].extend(context_embeddings)
+                all_embeddings['abbreviation_embeddings'].extend(abbreviation_embeddings)
+                all_embeddings['abstract_ids'].extend(ids_batch)
+        
+        return all_embeddings # returns a dict of abtract_ids, abbreviation_embeddings, and context_embeddings tensors
 
-
-        return all_embeddings
-
-    def _get_abbreviation_token_index(self, inputs: torch.Tensor, abbreviation: str, batch_idx: int) -> int:
+    def _get_abbreviation_token_index(self, inputs: torch.Tensor, abbreviation: str, batch_idx: int) -> Tuple[int, int]:
         """
         Get the token index of the abbreviation in the tokenized input sentence.
         
@@ -142,5 +148,6 @@ class BioBERTModel(Embedding):
         for idx, token_id in enumerate(token_ids):
             token = self.tokenizer.decode([token_id])
             if token in abbr_tokens:
-                return idx  # Return the index of the abbreviation token
+                # print(f'Found {token} in {abbr_tokens}')
+                return idx, len(abbr_tokens)  # Return the index of the abbreviation token and it's size
         return None  # If abbreviation not found, return None (handle error later)

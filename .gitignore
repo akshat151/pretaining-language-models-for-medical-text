@@ -3,3 +3,4 @@ dataset/*
 .vscode/
 trained_models/embeddings/*
 trained_models/tokenizers/*
+saved_embeddings/*

@@ -2,3 +2,44 @@ embedding_models:
   bio_wordvec: 
     model_path: 'trained_models/embeddings/pretrained/bio_wordvec_200.bin'
     doc_vector_technique: 'average' # Options: [average, max, sum, normal (l2 norm)]
+
+datasets:
+  medal:
+    name: "medal"
+    data_path: "dataset/medal/pretrain_subset"
+    preprocessed_data_path: "dataset/medal/preprocessed_subset"      
+    num_classes: 10
+    tokenizer: "Tokenizer_1"
+    use_embeddings: true
+    embedding_dim: 100
+    embedding_path: "/path/to/embedding_file"
+    loss_function: "cross_entropy"
+
+model_names: ['lstm_and_self_attention']
+
+models:
+  lstm_and_self_attention:
+    hyperparameters: 
+      lstm_units: 64
+      attention_units: 32
+      dropout_rate: 0.3
+    base_params:
+
+    metrics:
+      - "accuracy"
+      - "precision"
+      - "recall"
+    
+# Common training settings
+training:
+  hyperparameters:
+    batch_size: 32
+    learning_rate: 0.001
+
+  optimizer: 'adam'
+  weight_decay: 0.5
+
+  epochs: 3
+  shuffle: true
+  random_seed: 42
+
