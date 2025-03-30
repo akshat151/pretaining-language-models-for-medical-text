@@ -2,6 +2,7 @@ embedding_models:
   bio_wordvec: 
     model_path: 'trained_models/embeddings/pretrained/bio_wordvec_200.bin'
     doc_vector_technique: 'average' # Options: [average, max, sum, normal (l2 norm)]
+    embedding_dim: 200
 
 datasets:
   medal:
@@ -11,7 +12,6 @@ datasets:
     num_classes: 10
     tokenizer: "Tokenizer_1"
     use_embeddings: true
-    embedding_dim: 100
     embedding_path: "/path/to/embedding_file"
     loss_function: "cross_entropy"
 

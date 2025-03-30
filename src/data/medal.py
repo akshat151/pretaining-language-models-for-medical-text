@@ -260,16 +260,18 @@ class MeDALSubset(BaseDataset):
 
             text_data = data['TEXT']
 
-        tokenizer_instance = TokenizerFactory.get_tokenizer(
-            tokenizer_type,
-            **kwargs
-        )
+            tokenizer_instance = TokenizerFactory.get_tokenizer(
+                tokenizer_type,
+                **kwargs
+            )
 
-        if tokenizer_type == 'pretrained':
-            return tokenizer_instance.tokenize()
-        else:    
-            tokenized_data = [tokenizer_instance.tokenize(text) for text in text_data]
-            tokenized_splits.append(tokenized_data)
+            if tokenizer_type == 'pretrained':
+                return tokenizer_instance.tokenize()
+            else:    
+                tokenized_data = text_data.parallel_apply(lambda text: tokenizer_instance.tokenize(text))
+                tokenized_splits.append(tokenized_data)
+                # tokenized_data = [tokenizer_instance.tokenize(text) for text in text_data]
+                # tokenized_splits.append(tokenized_data)
 
         if len(splits) == 1:
             return tokenized_splits[0]
@@ -330,11 +332,12 @@ class MeDALSubset(BaseDataset):
         )
         
         for data, abbr, id in zip(split_data, split_abbr, split_ids, splits):
-            print(f'Embedding {split} set')
             if embedding_type == 'bio_bert':
                 embeddings = embedding_model.embed(data, abbr, id)
+            elif embedding_type == 'bio_wordvec':
+                embeddings = embedding_model.embed()
             elif tokenized_data is not None:
-                embeddings = embedding_model.embed(tokenized_data)
+                embeddings = embedding_model.embed(tokenized_data, abbr)
             else:
                 embeddings = embedding_model.embed(data)
             embedded_splits.append(embeddings)
