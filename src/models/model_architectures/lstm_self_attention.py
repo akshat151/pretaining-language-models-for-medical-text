@@ -1,19 +1,10 @@
 import torch
 import torch.nn as nn
 
-class LSTM_SelfAttention(nn.Module):
-    def __init__(self, *args, **kwargs):
-        super().__init__(*args, **kwargs)
-        pass
-
-    def forward(self, x):
-        pass
-
-
 
 class LSTMandSelfAttention(nn.Module):
-    def __init__(self, embedding_dim, hidden_dim, num_classes, num_layers=1, dropout=0.1):
-        super(LSTMandSelfAttention, self).__init__()
+    def __init__(self, embedding_dim, hidden_dim, num_classes, num_layers=3, dropout=0.1):
+        super().__init__()
         
         # LSTM Layer
         self.lstm = nn.LSTM(input_size=embedding_dim, hidden_size=hidden_dim, 

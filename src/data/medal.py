@@ -1,5 +1,5 @@
 import shutil
-from typing import List, Tuple, Union, Any
+from typing import Dict, List, Tuple, Union, Any
 import torch.nn as nn
 
 from ..tokenizer.factory import TokenizerFactory
@@ -60,10 +60,24 @@ class MeDALSubset(BaseDataset):
         self.train_data = pd.read_csv(self.path / 'train.csv')
         self.val_data = pd.read_csv(self.path / 'valid.csv')
         self.test_data = pd.read_csv(self.path / 'test.csv')
-        self.data = pd.concat([self.train_data, self.val_data, self.test_data], ignore_index=True) 
+        self.data = pd.concat([self.train_data, self.val_data, self.test_data], ignore_index=True)
+        self.class_to_idx = self.convert_class_to_idx(self.data)
 
         print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
         return self.data, self.train_data, self.val_data, self.test_data
+
+    def convert_class_to_idx(self, dataset: pd.DataFrame):
+        """
+        Creates a dict of class name: index
+        """
+        labels: set = set(dataset['LABEL'])
+        class_to_idx: Dict[str, int] = {}
+
+        for idx, label in enumerate(labels):
+            class_to_idx[label] = idx
+
+        return class_to_idx
+
 
     @staticmethod
     def lemmatizer(data: str):
@@ -304,27 +318,46 @@ class MeDALSubset(BaseDataset):
         split_data = []
         split_abbr = []
         split_ids = []
-
-
-        for split in splits:
-            if split == 'train':
-                data = self.train_data['TEXT']
-                abbr = self.train_data['ABBREVIATION']
-                ids = self.train_data['ABSTRACT_ID']
-            elif split == 'valid':
-                data = self.val_data['TEXT']
-                abbr = self.val_data['ABBREVIATION']
-                ids = self.val_data['ABSTRACT_ID']
-            elif split == 'test':
-                data = self.test_data['TEXT']
-                ids = self.test_data['ABSTRACT_ID']
-                abbr = self.test_data['ABBREVIATION']
-            else:
-                raise ValueError('Invalid split passed.')
+        
+        print('going to split data')
+        for split in splits: 
+            if tokenized_data is not None:
+                if split == 'train':
+                    data = tokenized_data
+                    ids = self.train_data['ABSTRACT_ID']
+                    abbr = self.train_data['ABBREVIATION']
+                elif split == 'valid':
+                    data = tokenized_data
+                    abbr = self.val_data['ABBREVIATION']
+                    ids = self.val_data['ABSTRACT_ID']
+                elif split == 'test':
+                    data = tokenized_data
+                    ids = self.test_data['ABSTRACT_ID']
+                    abbr = self.test_data['ABBREVIATION']
+                else:
+                    raise ValueError('Invalid split passed.')
                 
+            else:
+                if split == 'train':
+                    data = self.train_data['TEXT']
+                    abbr = self.train_data['ABBREVIATION']
+                    ids = self.train_data['ABSTRACT_ID']
+                elif split == 'valid':
+                    data = self.val_data['TEXT']
+                    abbr = self.val_data['ABBREVIATION']
+                    ids = self.val_data['ABSTRACT_ID']
+                elif split == 'test':
+                    data = self.test_data['TEXT']
+                    ids = self.test_data['ABSTRACT_ID']
+                    abbr = self.test_data['ABBREVIATION']
+                else:
+                    raise ValueError('Invalid split passed.')
+                
+
             split_data.append(data.tolist())
             split_abbr.append(abbr.tolist())
             split_ids.append(ids.tolist())
+
 
         embedding_model = EmbeddingFactory.get_embedding(
             embedding_type=embedding_type,
@@ -334,9 +367,8 @@ class MeDALSubset(BaseDataset):
         for data, abbr, id in zip(split_data, split_abbr, split_ids, splits):
             if embedding_type == 'bio_bert':
                 embeddings = embedding_model.embed(data, abbr, id)
-            elif embedding_type == 'bio_wordvec':
-                embeddings = embedding_model.embed()
             elif tokenized_data is not None:
+                print('received tokenized data')
                 embeddings = embedding_model.embed(tokenized_data, abbr)
             else:
                 embeddings = embedding_model.embed(data)

@@ -1,7 +1,10 @@
 from abc import ABC, abstractmethod
 from typing import List
 import os
-import pickle
+import pyarrow.parquet as pq
+import pyarrow as pa
+
+import pandas as pd
 
 class BaseDataset(ABC):
     def __init__(self, name):
@@ -86,17 +89,24 @@ class BaseDataset(ABC):
 
     def save_embeddings(self, split_embeddings: List, splits: List[str], model_name: str):
         """
-        Saves embeddings for a split into a pickle file.
+        Saves embeddings for a split into a Parquet file.
         """
         if not os.path.exists('saved_embeddings'):
             os.makedirs('saved_embeddings')
 
         for embeddings, split in zip(split_embeddings, splits):
-            file_name = f'saved_embeddings/{split}_{model_name}_embeddings.pkl'
+            file_name = f'saved_embeddings/{split}_{model_name}_embeddings.parquet'
 
             try:
-                with open(file_name, 'wb') as f:
-                    pickle.dump(embeddings, f)
+                # Convert embeddings list to Pandas DataFrame
+                df = pd.DataFrame(embeddings)
+
+                # Convert to Apache Arrow table
+                table = pa.Table.from_pandas(df)
+
+                # Save as Parquet file with Snappy compression (efficient & fast)
+                pq.write_table(table, file_name, compression='snappy')
+
                 print(f'{split} embeddings saved successfully in {file_name}\n')
 
             except Exception as e:

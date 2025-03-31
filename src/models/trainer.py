@@ -28,6 +28,8 @@ class ModelTrainer:
         
 
     def train(self, trainloader: DataLoader, valloader: DataLoader, dataset: str = 'medal'):
+        best_model = None
+        best_acc = 0
         
         for model_name in self.config['model_names']:
             print(f'------- {model_name} --------')
@@ -81,9 +83,14 @@ class ModelTrainer:
                 results[f'epoch_{epoch+1}'] = {'loss': avg_loss, 'accuracy': accuracy}
             
             val_loss, val_acc = self.evaluate(valloader, model, 'Validation')
+            if val_acc > best_acc:
+                best_acc = val_acc
+                best_model = model
+
             results[f'validation'] = {f'loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}'}
                 
         return results
+    
 
     def evaluate(self, dataloader: DataLoader, model: nn.Module, set: str = 'Validation'):
         model.eval()  
