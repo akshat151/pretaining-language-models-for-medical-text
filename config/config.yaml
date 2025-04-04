@@ -9,11 +9,12 @@ datasets:
     name: "medal"
     data_path: "dataset/medal/pretrain_subset"
     preprocessed_data_path: "dataset/medal/preprocessed_subset"      
-    num_classes: 10
+    num_classes: 22555
     tokenizer: "Tokenizer_1"
     use_embeddings: true
     embedding_path: "/path/to/embedding_file"
     loss_function: "cross_entropy"
+    max_sequence_length: 954 # maxseq
 
 model_names: ['lstm_and_self_attention']
 
@@ -21,8 +22,8 @@ models:
   lstm_and_self_attention:
     hyperparameters: 
       lstm_units: 64
-      attention_units: 32
-      dropout_rate: 0.3
+      lstm_hidden_dim: 500
+      dropout: 0.5
     base_params:
 
     metrics:

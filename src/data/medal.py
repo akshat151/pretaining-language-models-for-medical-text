@@ -56,14 +56,15 @@ class MeDALSubset(BaseDataset):
                     shutil.move(item_path, medal_dir)
 
         self.path = medal_dir / 'pretrain_subset' # Points to pretrain_subset
+        print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
 
         self.train_data = pd.read_csv(self.path / 'train.csv')
         self.val_data = pd.read_csv(self.path / 'valid.csv')
         self.test_data = pd.read_csv(self.path / 'test.csv')
         self.data = pd.concat([self.train_data, self.val_data, self.test_data], ignore_index=True)
         self.class_to_idx = self.convert_class_to_idx(self.data)
+        print(f'Total number of classes: {len(self.class_to_idx)}')
 
-        print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
         return self.data, self.train_data, self.val_data, self.test_data
 
     def convert_class_to_idx(self, dataset: pd.DataFrame):
@@ -223,7 +224,6 @@ class MeDALSubset(BaseDataset):
     def tokenize(self, tokenizer_type: str, splits = ['train'], **kwargs) -> Union[List[str], 
                                                                                          Tuple[List[str], List[str]], 
                                                                                          Tuple[List[str], List[str], List[str]],
-                                                                                         Any
                                                                                          ]:
         """
         Tokenizes the dataset based on the specified tokenizer type and the given splits.

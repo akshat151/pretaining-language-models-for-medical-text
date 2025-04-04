@@ -1,13 +1,19 @@
 from enum import Enum
+from importlib import reload
 import os
 from pathlib import Path
 import gensim
+import h5py
 import numpy as np
+from sklearn.decomposition import TruncatedSVD
 from sklearn.feature_extraction.text import TfidfVectorizer
 from typing import List, Optional
 from gensim.models import Word2Vec, FastText
 from .base import Embedding
 from scipy.sparse import save_npz, load_npz
+from tqdm import tqdm
+
+reload(gensim)
 
 class EmbeddingAlgorithm(Enum):
     WORD2VEC = "word2vec"
@@ -91,6 +97,7 @@ class TrainableEmbedding(Embedding):
         
     def train(self) -> None:
         """Train the embedding model on the corpus"""
+        print(f'Training {self.algorithm} model')
         if self.algorithm == EmbeddingAlgorithm.TF_IDF.value:
             self.train_tfidf()
         elif self.algorithm == EmbeddingAlgorithm.WORD2VEC.value:
@@ -101,42 +108,139 @@ class TrainableEmbedding(Embedding):
             raise ValueError(f"Unsupported algorithm: {self.algorithm}")
         
         self.trained = True
-        self.save()
+        self.save_model()
 
         
     def train_word2vec(self) -> None:
         """Train Word2Vec embeddings on the corpus"""
+        # Initial model training on a subset of data
         self.model = Word2Vec(
-            self.tokenized_corpus, 
-            vector_size=self.vector_size, window=self.window, min_count=self.min_count)
+            self.tokenized_corpus[:100000],  # Start with a smaller corpus
+            vector_size=self.vector_size,
+            window=self.window,
+            min_count=self.min_count,
+            workers=6,
+        )
+        self.model.train(self.tokenized_corpus[:100000], total_examples=100000, epochs=5)
+
+        # Incrementally train on the remaining corpus
+        for start in tqdm(
+            range(100000, len(self.tokenized_corpus), 100000),
+            'Incremental Training', 
+            len(self.tokenized_corpus)/100000
+            ):
+            end = min(start + 100000, len(self.tokenized_corpus))
+            self.model.build_vocab(self.tokenized_corpus[start:end], update=True)
+            self.model.train(self.tokenized_corpus[start:end], total_examples=end-start, epochs=5)
+
+        print(f"Word2Vec model type: {type(self.model)}")
+        
     
     def train_fasttext(self) -> None:
         """Train FastText embeddings on the corpus"""
+        initial_subset = self.tokenized_corpus[:100000]  # Use a smaller subset of data
+
         self.model = FastText(
-            self.tokenized_corpus, 
+            sentences=initial_subset,
             vector_size=self.vector_size, 
             window=self.window, 
-            min_count=self.min_count
-            )
+            min_count=self.min_count,
+            workers=6
+        )
 
-    def train_tfidf(self) -> None:
-        """Train TF-IDF vectorizer on the corpus"""
-        documents = [' '.join(tokens) for tokens in self.tokenized_corpus]
+        # Build vocabulary first
+        self.model.build_vocab(initial_subset)
+
+        # Train on the first subset
+        self.model.train(initial_subset, total_examples=len(initial_subset), epochs=5)
+
+        # Incrementally train on the remaining data in chunks
+        chunk_size = 100000
+        for start in tqdm(
+            range(100000, len(self.tokenized_corpus), chunk_size), 
+            desc='Training incrementally',
+            total=len(self.tokenized_corpus) // chunk_size
+        ):
+            end = min(start + chunk_size, len(self.tokenized_corpus))
+            chunk = self.tokenized_corpus[start:end]
+
+            # Update vocabulary and train on the new chunk
+            self.model.build_vocab(chunk, update=True)
+            self.model.train(chunk, total_examples=len(chunk), epochs=5)
+
+
+
+    def train_tfidf(self, output_file='embeddings/tfidf_embeddings.h5'):
+        """Train TF-IDF vectorizer on the corpus and store reduced embeddings"""
         self.vectorizer = TfidfVectorizer()
-        self.model = self.vectorizer.fit_transform(documents)
+        batch_size = 1000
+        svd_initialized = False
+        svd = TruncatedSVD(n_components=self.vector_size)
+        self.vectorizer
+    
+        # Prepare the corpus for training (tokenized documents to string format)
+        documents = [''.join(tokens) for tokens in self.tokenized_corpus]
         
-    def save(self) -> None:
+        # Create HDF5 file to store embeddings
+        with h5py.File(output_file, 'w') as hf:
+            # Create an empty dataset in HDF5 to store the reduced embeddings
+            embeddings_dataset = hf.create_dataset(
+                'tfidf_embeddings', 
+                shape=(len(documents), 100),  # 100 dimensions after SVD
+                dtype='float32',
+                chunks=(batch_size, 100),  # Chunks for efficient storage
+                compression="gzip"  # Optional: Compress data to save space
+            )
+            
+            start = 0
+            while start < len(documents):
+                end = min(start + batch_size, len(documents))
+                batch_docs = documents[start:end]
+                
+                # Fit the TF-IDF vectorizer on the current batch of documents
+                batch_tfidf = self.vectorizer.fit_transform(batch_docs)
+                
+                # Apply TruncatedSVD (if not already initialized, fit it on the first batch)
+                if not svd_initialized:
+                    svd.fit(batch_tfidf)
+                    svd_initialized = True
+                else:
+                    # If already initialized, just apply the transformation
+                    batch_tfidf = svd.transform(batch_tfidf)
+                
+                # Save the reduced embeddings for this batch to the HDF5 dataset
+                embeddings_dataset[start:end] = batch_tfidf
+                
+                # Update the starting point for the next batch
+                start = end
+
+
+    # def train_tfidf(self) -> None:
+    #     """Train TF-IDF vectorizer on the corpus"""
+    #     documents = [' '.join(tokens) for tokens in self.tokenized_corpus]
+    #     # print(f'corpus: {self.tokenized_corpus}')
+    #     # print(documents)
+    #     self.vectorizer = TfidfVectorizer()
+    #     self.model = self.vectorizer.fit_transform(documents)
+
+        
+    def save_model(self) -> None:
         """Save the trained model to disk"""
         if self.algorithm == EmbeddingAlgorithm.TF_IDF.value:
             path = self.model_dir / f'trained_{self.algorithm}.npz'
             save_npz(str(path), self.model)
-            # Also save the vectorizer
             import pickle
             with open(self.model_dir / f'trained_{self.algorithm}_vectorizer.pkl', 'wb') as f:
                 pickle.dump(self.vectorizer, f)
         else:
             path = self.model_dir / f'trained_{self.algorithm}.model'
-            self.model.save(str(path))
+            if self.model is None:
+                raise ValueError("Model has not been trained yet, cannot save.")
+            if isinstance(self.model, (Word2Vec, FastText)):  # Ensure the model type
+                self.model.save(str(path))
+            else:
+                raise TypeError(f"Expected Word2Vec or FastText model, but got {type(self.model)}")
+        print('Model saved')
 
     def load(self) -> None:
         """Load a trained model from disk"""
@@ -154,7 +258,7 @@ class TrainableEmbedding(Embedding):
                          else gensim.models.Word2Vec.load(str(path)))
 
 
-    def embed(self, tokenized_corpus: List[List[str]]) -> np.ndarray:
+    def embed(self, tokenized_corpus: List[List[str]], create_doc_embedding: bool = False) -> np.ndarray:
         """
         Generate embeddings for a list of documents in the tokenized corpus.
 
@@ -172,11 +276,12 @@ class TrainableEmbedding(Embedding):
                 self.trained = True
 
         if self.algorithm == EmbeddingAlgorithm.TF_IDF.value:
-            documents = [' '.join(tokens) for tokens in tokenized_corpus]
+            documents = [''.join(tokens) for tokens in tokenized_corpus]
             embeddings = self.vectorizer.transform(documents)
             return embeddings.toarray()
         else:
             all_embeddings = []
+            # for doc in tqdm(tokenized_corpus, 'Vectorizing', len(tokenized_corpus)):
             for doc in tokenized_corpus:
                 doc_embeddings = []
                 for token in doc:
@@ -184,11 +289,14 @@ class TrainableEmbedding(Embedding):
                         doc_embeddings.append(self.model.wv[token])
                     else:
                         doc_embeddings.append(np.zeros(self.vector_size))
-                        
-                if doc_embeddings:
-                    doc_embedding = np.mean(doc_embeddings, axis=0)
-                else:
-                    doc_embedding = np.zeros(self.vector_size)
-                all_embeddings.append(doc_embedding)
+                
+                if create_doc_embedding:
+                    if doc_embeddings:
+                        doc_embedding = np.mean(doc_embeddings, axis=0)
+                    else:
+                        doc_embedding = np.zeros(self.vector_size)
+                    all_embeddings.append(doc_embedding)
+                else: 
+                    all_embeddings.append(doc_embeddings)
             
-            return np.array(all_embeddings)
+            return all_embeddings
