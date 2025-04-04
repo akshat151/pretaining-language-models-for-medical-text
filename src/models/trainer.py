@@ -72,6 +72,7 @@ class ModelTrainer:
                 for batch_idx, (inputs, masks, targets) in tqdm(enumerate(trainloader), desc='Training', total=len(trainloader)):
                     print(f'Working on batch {batch_idx}')
                     print(f'batch size: {len(inputs)}')
+                    
                     inputs, targets, masks = inputs.to(self.device), targets.to(self.device), masks.to(self.device)
 
                     self.optimizer.zero_grad()
