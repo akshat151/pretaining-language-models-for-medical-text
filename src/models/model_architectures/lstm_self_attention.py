@@ -8,8 +8,14 @@ class SelfAttention(nn.Module):
         super().__init__()
         self.attn = nn.Linear(hidden_dim, 1)  # Linear layer to compute attention score for each hidden state
 
-    def forward(self, lstm_out):
+    def forward(self, lstm_out, mask=None):
         # lstm_out is of shape (batch_size, seq_len, hidden_dim)
+        
+        # Apply mask if provided (mask is of shape (batch_size, seq_len))
+        if mask is not None:
+            # Expand mask to match the hidden_dim * 2 size
+            mask = mask.unsqueeze(-1)  # (batch_size, seq_len, 1)
+            lstm_out = lstm_out * mask  # Apply mask: (batch_size, seq_len, hidden_dim * 2)
         
         # Compute attention scores
         attn_scores = self.attn(lstm_out)  # (batch_size, seq_len, 1)
@@ -18,7 +24,7 @@ class SelfAttention(nn.Module):
         attn_weights = F.softmax(attn_scores, dim=1)  # (batch_size, seq_len, 1)
         
         # Compute the weighted sum of the LSTM outputs (context vector)
-        context_vector = torch.sum(attn_weights * lstm_out, dim=1)  # (batch_size, hidden_dim)
+        context_vector = torch.sum(attn_weights * lstm_out, dim=1)  # (batch_size, hidden_dim * 2)
         
         return context_vector
 
@@ -42,12 +48,9 @@ class LSTM_SelfAttention(nn.Module):
         # LSTM Output: (batch_size, seq_len, hidden_dim * 2)
         lstm_out, _ = self.lstm(x)
         
-        # Apply Self-Attention: (batch_size, hidden_dim * 2)
-        context_vector = self.attention(lstm_out)
+        # Apply Self-Attention with Mask (if provided)
+        context_vector = self.attention(lstm_out, mask)
 
-        if mask is not None:
-            context_vector = context_vector * mask
-        
         # Classification using the context vector
         output = self.fc(self.dropout(context_vector))  # (batch_size, num_classes)
         

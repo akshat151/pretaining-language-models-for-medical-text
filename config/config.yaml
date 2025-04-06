@@ -2,7 +2,7 @@ embedding_models:
   bio_wordvec: 
     model_path: 'trained_models/embeddings/pretrained/bio_wordvec_200.bin'
     doc_vector_technique: 'average' # Options: [average, max, sum, normal (l2 norm)]
-    embedding_dim: 200
+    embedding_dim: 100
 
 datasets:
   medal:
@@ -21,9 +21,9 @@ model_names: ['lstm_and_self_attention']
 models:
   lstm_and_self_attention:
     hyperparameters: 
-      lstm_units: 64
-      lstm_hidden_dim: 500
-      dropout: 0.5
+      lstm_units: 3
+      lstm_hidden_dim: 50
+      dropout: 0.1
     base_params:
 
     metrics:
@@ -35,12 +35,12 @@ models:
 training:
   hyperparameters:
     batch_size: 32
-    learning_rate: 0.001
+    learning_rate: 0.0001
 
   optimizer: 'adam'
-  weight_decay: 0.5
+  weight_decay: 0.001
 
-  epochs: 3
+  epochs: 5
   shuffle: true
   random_seed: 42
 

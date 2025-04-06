@@ -64,6 +64,8 @@ class TrainableEmbedding(Embedding):
         except ValueError:
             raise ValueError(f"Algorithm must be one of: {[algo.value for algo in EmbeddingAlgorithm]}")
 
+
+
         # Create model directory
         self.model_dir = Path('trained_models/embeddings/trained')
         self.model_dir.mkdir(parents=True, exist_ok=True)
@@ -176,7 +178,6 @@ class TrainableEmbedding(Embedding):
         batch_size = 1000
         svd_initialized = False
         svd = TruncatedSVD(n_components=self.vector_size)
-        self.vectorizer
     
         # Prepare the corpus for training (tokenized documents to string format)
         documents = [''.join(tokens) for tokens in self.tokenized_corpus]
@@ -274,6 +275,8 @@ class TrainableEmbedding(Embedding):
             else:
                 self.load()
                 self.trained = True
+                
+
 
         if self.algorithm == EmbeddingAlgorithm.TF_IDF.value:
             documents = [''.join(tokens) for tokens in tokenized_corpus]
@@ -285,6 +288,8 @@ class TrainableEmbedding(Embedding):
             for doc in tokenized_corpus:
                 doc_embeddings = []
                 for token in doc:
+                    if not isinstance(token, str):
+                        token = token.as_py()
                     if token in self.model.wv:
                         doc_embeddings.append(self.model.wv[token])
                     else:
@@ -296,6 +301,7 @@ class TrainableEmbedding(Embedding):
                     else:
                         doc_embedding = np.zeros(self.vector_size)
                     all_embeddings.append(doc_embedding)
+
                 else: 
                     all_embeddings.append(doc_embeddings)
             
