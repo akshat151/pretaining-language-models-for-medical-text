@@ -259,7 +259,7 @@ class TrainableEmbedding(Embedding):
                          else gensim.models.Word2Vec.load(str(path)))
 
 
-    def embed(self, tokenized_corpus: List[List[str]], create_doc_embedding: bool = False) -> np.ndarray:
+    def embed(self, tokenized_corpus: List[List[str]], label_names: set =  None, create_doc_embedding: bool = False):
         """
         Generate embeddings for a list of documents in the tokenized corpus.
 
@@ -275,21 +275,32 @@ class TrainableEmbedding(Embedding):
             else:
                 self.load()
                 self.trained = True
-                
 
 
         if self.algorithm == EmbeddingAlgorithm.TF_IDF.value:
             documents = [''.join(tokens) for tokens in tokenized_corpus]
             embeddings = self.vectorizer.transform(documents)
             return embeddings.toarray()
+        
         else:
+            abbr_idx = 0
+            abbr_embedding = []
             all_embeddings = []
             # for doc in tqdm(tokenized_corpus, 'Vectorizing', len(tokenized_corpus)):
             for doc in tokenized_corpus:
                 doc_embeddings = []
-                for token in doc:
+                for idx, token in enumerate(doc):
                     if not isinstance(token, str):
                         token = token.as_py()
+
+                    if token in label_names:
+                        abbr_idx = idx
+                        if token in self.model.wv:
+                            abbr_embedding = self.model.wv[token]
+                        else:
+                            print('Abbreviation embedding not found!')
+                            abbr_embedding = np.zeros(self.vector_size)
+
                     if token in self.model.wv:
                         doc_embeddings.append(self.model.wv[token])
                     else:
@@ -304,5 +315,17 @@ class TrainableEmbedding(Embedding):
 
                 else: 
                     all_embeddings.append(doc_embeddings)
+
+
+            context_window = 50
+            start = abbr_idx - context_window // 2
+            end = abbr_idx + context_window // 2
+            if start < 0:
+                start = 0
             
-            return all_embeddings
+            if end > len(all_embeddings[0]):
+                end = len(all_embeddings[0])
+            
+            context_embedding = all_embeddings[0][start:end].copy()
+            
+            return all_embeddings[0], abbr_embedding, context_embedding

@@ -3,6 +3,12 @@ embedding_models:
     model_path: 'trained_models/embeddings/pretrained/bio_wordvec_200.bin'
     doc_vector_technique: 'average' # Options: [average, max, sum, normal (l2 norm)]
     embedding_dim: 100
+  glove:
+    model_path: 'trained_models/embeddings/pretrained/glove.6B.100d.txt'
+    embedding_dim: 100
+    vocab_size_limit: 400000
+
+
 
 datasets:
   medal:
@@ -14,16 +20,17 @@ datasets:
     use_embeddings: true
     embedding_path: "/path/to/embedding_file"
     loss_function: "cross_entropy"
-    max_sequence_length: 954 # maxseq
+    max_sequence_length: 955 # maxseq
+    context_window: 30
 
 model_names: ['lstm_and_self_attention']
 
 models:
   lstm_and_self_attention:
     hyperparameters: 
-      lstm_units: 3
-      lstm_hidden_dim: 50
-      dropout: 0.1
+      lstm_units: 2
+      lstm_hidden_dim: 64
+      dropout: 0.3
     base_params:
 
     metrics:
@@ -36,11 +43,12 @@ training:
   hyperparameters:
     batch_size: 32
     learning_rate: 0.0001
+  create_embedding_layer: True
 
   optimizer: 'adam'
   weight_decay: 0.001
 
   epochs: 5
-  shuffle: true
+  shuffle: True
   random_seed: 42
 

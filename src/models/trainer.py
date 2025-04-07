@@ -47,7 +47,7 @@ class ModelTrainer:
                 nn.init.constant_(param.data, 0)
 
 
-    def train(self, trainloader: DataLoader, valloader: DataLoader, dataset: str = 'medal', embedding_dim = 100):
+    def train(self, trainloader: DataLoader, valloader: DataLoader, dataset: str = 'medal', embedding_dim = 100, **kwargs):
         best_model = None
         best_acc = 0
 
@@ -57,13 +57,19 @@ class ModelTrainer:
             model_hyperparams = self.config['models'][model_name].get('hyperparameters', {})
             model_baseparams = self.config['models'][model_name].get('base_params', {})
             num_classes = self.config['datasets'][dataset]['num_classes']
-            
+            create_embedding_layer = self.config['training']['create_embedding_layer']
+            embedding_model = None
+            if 'embedding_model' in kwargs:
+                embedding_model = kwargs['embedding_model']
+
             # Combine parameters safely
             model_params = {
                 **(model_hyperparams if model_hyperparams else {}),
                 **(model_baseparams if model_baseparams else {}),
                 'num_classes': num_classes,
-                'embedding_dim': embedding_dim
+                'embedding_dim': embedding_dim,
+                'create_embedding_layer': create_embedding_layer,
+                'embedding_model': embedding_model if embedding_model else None
             }
 
             print(model_params)
@@ -107,7 +113,7 @@ class ModelTrainer:
                     loss.backward()
         
                     # Apply gradient clipping during training
-                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
                     self.optimizer.step()
 
@@ -134,7 +140,7 @@ class ModelTrainer:
 
             # results[f'validation'] = {f'loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}'}
 
-        self.save_model(best_model, 'lstm_att_wordvec')
+        self.save_model(best_model, 'lstm_att_glove')
 
         return results
 
