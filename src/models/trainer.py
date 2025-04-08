@@ -113,11 +113,14 @@ class ModelTrainer:
                     loss.backward()
         
                     # Apply gradient clipping during training
-                    # torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
+                    torch.nn.utils.clip_grad_norm_(model.parameters(), max_norm=1.0)
 
                     self.optimizer.step()
 
                     total_loss += loss.item()
+
+                    if batch_idx % 100 == 0:
+                        print(f'Loss: {loss.item()}')
 
                     # Calculate accuracy (ignoring padding tokens)
                     predictions = torch.argmax(outputs, dim=1)
@@ -133,12 +136,13 @@ class ModelTrainer:
                 results[f'epoch_{epoch+1}'] = {'loss': avg_loss, 'accuracy': accuracy}
 
             # Validation logic (as before)
-            # val_loss, val_acc = self.evaluate(valloader, model, 'Validation')
-            # if val_acc > best_acc:
-            #     best_acc = val_acc
-            best_model = model
+            val_loss, val_acc = self.evaluate(valloader, model, 'Validation')
 
-            # results[f'validation'] = {f'loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}'}
+            if val_acc > best_acc:
+                best_acc = val_acc
+                best_model = model
+
+            results[f'validation'] = {f'loss: {val_loss:.4f}, Accuracy: {val_acc:.4f}'}
 
         self.save_model(best_model, 'lstm_att_glove')
 
@@ -191,11 +195,14 @@ class ModelTrainer:
         total_samples = 0
 
         with torch.no_grad():  
-            for inputs, targets in dataloader:
-                inputs, targets = inputs.to(self.device), targets.to(self.device)
+            for inputs, masks, targets in dataloader:
+                inputs, masks, targets = inputs.to(self.device), masks.to(self.device), targets.to(self.device)
 
-                outputs = model(inputs)
+                outputs = model(inputs, masks)
                 loss = self.criterion(outputs, targets)
+                loss = loss * masks  # Optional if you want to mask padded values
+                loss = loss.sum() / masks.sum()
+
                 total_loss += loss.item()
 
                 predictions = torch.argmax(outputs, dim=1)

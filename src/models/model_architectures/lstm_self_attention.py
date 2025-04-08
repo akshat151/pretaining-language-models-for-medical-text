@@ -73,12 +73,14 @@ class LSTM_SelfAttention(nn.Module):
 
         # Fully Connected Layer for classification
         self.fc = nn.Sequential(
-            nn.Linear(lstm_hidden_dim * 2, num_classes),
+            nn.Linear(lstm_hidden_dim * 2, 1024),
+            nn.Linear(1024, num_classes)
         )
         self.dropout = nn.Dropout(dropout)
 
         # Optional: Max sequence length (used for padding/truncation)
         self.max_seq_len = max_seq_len
+
 
     def forward(self, x, mask=None):
         """

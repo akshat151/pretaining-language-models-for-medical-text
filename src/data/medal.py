@@ -273,6 +273,7 @@ class MeDALSubset(BaseDataset):
                 raise ValueError('Invalid split passed. Refer to func. documentation.')
 
             text_data = data['TEXT']
+            abbreviation = data['ABBREVIATION']
 
             tokenizer_instance = TokenizerFactory.get_tokenizer(
                 tokenizer_type,
@@ -282,10 +283,12 @@ class MeDALSubset(BaseDataset):
             if tokenizer_type == 'pretrained':
                 return tokenizer_instance.tokenize()
             else:    
+                # Tokenize each piece of text
                 tokenized_data = text_data.parallel_apply(lambda text: tokenizer_instance.tokenize(text))
-                tokenized_splits.append(tokenized_data)
-                # tokenized_data = [tokenizer_instance.tokenize(text) for text in text_data]
-                # tokenized_splits.append(tokenized_data)
+                
+                # Zip tokenized text with the original abbreviation (string)
+                tokenized_splits.append(tuple(zip(tokenized_data, abbreviation)))
+
 
         if len(splits) == 1:
             return tokenized_splits[0]
@@ -380,5 +383,3 @@ class MeDALSubset(BaseDataset):
             return embedded_splits[0]
             
         return tuple(embedded_splits)
-
-

@@ -24,21 +24,6 @@ class BaseDataset(ABC):
         self.embedding_type = None
         self.embedding_model = None
 
-    @abstractmethod
-    def __len__(self):
-        """
-        Abstract method to calculate the length of the dataset.
-        This method must be implemented by the subclass.
-        """
-        pass
-
-    @abstractmethod
-    def __getitem__(self, idx):
-        """
-        Abstract method to return the sample at given index.
-        This method must be implemented by the subclass.
-        """
-        pass
 
     @abstractmethod
     def load_dataset(self):
@@ -111,21 +96,3 @@ class BaseDataset(ABC):
 
             except Exception as e:
                 raise ValueError(f'Error in saving embeddings! {e}')
-
-
-
-    # @abstractmethod
-    # def save_processed_data(self, path):
-    #     """
-    #     Abstract method to save the processed dataset to a file.
-    #     This method must be implemented by the subclass.
-    #     """
-    #     pass
-
-    # @abstractmethod
-    # def get_data(self):
-    #     """
-    #     Abstract method to return the processed dataset (train, validation, test).
-    #     This method must be implemented by the subclass.
-    #     """
-    #     pass

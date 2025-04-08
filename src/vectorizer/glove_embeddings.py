@@ -6,7 +6,7 @@ from .base import Embedding
 class GloVeEmbedding(Embedding):
     """Embedding model that uses GloVe pre-trained embeddings."""
     
-    def __init__(self, model_path: str, embedding_dim: int = 100, vocab_size_limit=None):
+    def __init__(self, model_path: str, embedding_dim: int = 100, vocab_size_limit=None, context_window = 7):
         """
         Initializes the GloVe embedding model.
         
@@ -26,6 +26,7 @@ class GloVeEmbedding(Embedding):
 
         # Convert the embedding matrix into a torch tensor
         self.embedding_matrix = torch.tensor(self.embedding_matrix, dtype=torch.float32)
+        self.context_window = context_window
 
     def load_glove_embeddings(self, glove_file_path):
         """Load GloVe embeddings from a file."""
@@ -85,10 +86,20 @@ class GloVeEmbedding(Embedding):
 
         return np.array(embeddings)
     
-    def token_indices(self, tokenized_corpus: List[str]):
+    def token_indices(self, tokenized_corpus: List[str], abbreviation: str):
         token_indices = []
-        for token in tokenized_corpus:
+        start = -1
+        end = -1
+        for idx, token in enumerate(tokenized_corpus):
+            if token == abbreviation:
+                if start == -1:
+                    start = idx
+                elif end == -1:
+                    end = idx
+
             token_indices.append(
                 self.word_to_idx.get(token, 1)
             )
-        return token_indices
+        start = max(start - self.context_window, 0)
+        end = min(end + self.context_window, len(tokenized_corpus))
+        return token_indices[start: end]
