@@ -3,8 +3,16 @@ from typing import List
 import os
 import pyarrow.parquet as pq
 import pyarrow as pa
-
+from nltk.corpus import stopwords
 import pandas as pd
+import spacy
+import nltk
+from nltk.corpus import stopwords
+
+nlp = spacy.load('en_core_web_sm')
+
+nltk.download('stopwords')
+
 
 class BaseDataset(ABC):
     def __init__(self, name):
@@ -64,13 +72,32 @@ class BaseDataset(ABC):
         """
         pass
 
-    @abstractmethod
+    # @abstractmethod
     def split_dataset(self):
         """
         Abstract method to split the data into training, validation, and test sets.
         This method must be implemented by the subclass.
         """
         pass
+
+    @staticmethod
+    def lemmatizer(data: str):
+        # nlp = spacy.load('en_core_sci_md') # trained on general biomedical text data
+        doc = nlp(data)
+        lemmatized_data = ''
+        for token in doc:
+            lemmatized_data += f'{token.lemma_} ' 
+        return lemmatized_data
+    
+    @staticmethod
+    def remove_stop_words(data: str) -> str:
+        stop_words = set(stopwords.words('english'))
+        processed_data = ''
+        for word in data.split():
+            if word not in stop_words:
+                processed_data += f'{word} '
+
+        return processed_data
 
     def save_embeddings(self, split_embeddings: List, splits: List[str], model_name: str):
         """

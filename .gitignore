@@ -1,4 +1,4 @@
-dataset/medal/*
+dataset/*
 **/__pycache__/
 .vscode/
 trained_models/embeddings/pretrained/*

@@ -119,7 +119,7 @@ class ModelTrainer:
 
                     total_loss += loss.item()
 
-                    if batch_idx % 100 == 0:
+                    if batch_idx % 15000 == 0:
                         print(f'Loss: {loss.item()}')
 
                     # Calculate accuracy (ignoring padding tokens)
@@ -134,7 +134,11 @@ class ModelTrainer:
                 print(f'Epoch {epoch+1}/{self.num_epochs} - Loss: {avg_loss:.4f}, Accuracy: {accuracy:.2f}%')
 
                 results[f'epoch_{epoch+1}'] = {'loss': avg_loss, 'accuracy': accuracy}
+                self.save_model(model, 'lstm_att_glove')
+                print(f'Visualization of {epoch+1}')
+                self.plot_results(results)
 
+                
             # Validation logic (as before)
             val_loss, val_acc = self.evaluate(valloader, model, 'Validation')
 

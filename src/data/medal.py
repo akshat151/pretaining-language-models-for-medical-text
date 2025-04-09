@@ -1,3 +1,4 @@
+import re
 import shutil
 from typing import Dict, List, Tuple, Union, Any
 import torch.nn as nn
@@ -21,7 +22,7 @@ from pandarallel import pandarallel
 pandarallel.initialize(progress_bar=True)
 
 nltk.download('stopwords')
-nlp = spacy.load('en_core_web_sm')
+
 
 class MeDALSubset(BaseDataset):
     """
@@ -78,16 +79,6 @@ class MeDALSubset(BaseDataset):
             class_to_idx[label] = idx
 
         return class_to_idx
-
-
-    @staticmethod
-    def lemmatizer(data: str):
-        # nlp = spacy.load('en_core_sci_md') # trained on general biomedical text data
-        doc = nlp(data)
-        lemmatized_data = ''
-        for token in doc:
-            lemmatized_data += f'{token.lemma_} ' 
-        return lemmatized_data
     
 
     def split_dataset(self) -> Tuple[pd.DataFrame, pd.DataFrame, pd.DataFrame]:
@@ -107,16 +98,6 @@ class MeDALSubset(BaseDataset):
             raise ValueError('Index out of bounds')
         
         return self.data.iloc[idx]
-    
-    @staticmethod
-    def remove_stop_words(data: str) -> str:
-        stop_words = set(stopwords.words('english'))
-        processed_data = ''
-        for word in data.split():
-            if word not in stop_words:
-                processed_data += f'{word} '
-
-        return processed_data
     
 
     def _preprocess_split(self, data: pd.DataFrame) -> pd.DataFrame:
@@ -162,10 +143,13 @@ class MeDALSubset(BaseDataset):
                 else:
                     tmp_words.append(word.lower())
             tmp = " ".join(tmp_words).strip()
+            
+            # Remove punctuation using regex
+            tmp = re.sub(r'[^\w\s]', '', tmp)
 
             # Apply lemmatization and stop-word removal (assumed to be static methods on MeDALSubset)
-            processed = MeDALSubset.lemmatizer(tmp)
-            processed = MeDALSubset.remove_stop_words(processed)
+            processed = BaseDataset.lemmatizer(tmp)
+            processed = BaseDataset.remove_stop_words(processed)
 
             row['TEXT'] = processed
             return row

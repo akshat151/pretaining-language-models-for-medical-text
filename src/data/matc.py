@@ -2,11 +2,11 @@
 
 import os
 from pathlib import Path
+import random
 import re
 import shutil
 from typing import Dict, List, Tuple, Union
 
-import kagglehub
 import pandas as pd
 from tqdm import tqdm
 
@@ -20,94 +20,71 @@ pandarallel.initialize(progress_bar=True)
 
 
 
-class MIMIC_III(BaseDataset):
+class MATC(BaseDataset):
     def __init__(self, name):
         super().__init__(name)
-        print(f'MIMIC-III dataset initialized with name: {self.name}')
+        print(f'Medical Abstract for Text Classification dataset initialized with name: {self.name}')
 
 
     def load_dataset(self) -> Tuple[pd.DataFrame]:
         """
-        Loads the MIMIC-III dataset from Kaggle
+        Loads the MATC dataset from Kaggle
         """
-        downloaded_path = kagglehub.dataset_download("asjad99/mimiciii")
-        print("Dataset downloaded to:", downloaded_path)
+        splits = {'train': 'data/train-00000-of-00001.parquet', 'test': 'data/test-00000-of-00001.parquet'}
+        self.train_data = pd.read_parquet("hf://datasets/TimSchopf/medical_abstracts/" + splits["train"])
+        self.test_data = pd.read_parquet("hf://datasets/TimSchopf/medical_abstracts/" + splits["test"])
+        labels_dict = pd.read_parquet("hf://datasets/TimSchopf/medical_abstracts/labels/train-00000-of-00001.parquet").to_dict()
+        self.class_to_idx = self.convert_class_to_idx(labels_dict)
+        self.idx_to_class = {v: k for k, v in self.class_to_idx.items()}
+        matc_dir = ProjectPaths.DATASET_DIR.value / 'MATC'
 
-        mimic_dir = ProjectPaths.DATASET_DIR.value / 'MIMIC-III'
+        if not matc_dir.exists() or not matc_dir.is_dir():
+            os.mkdir(matc_dir)
+            self.train_data.to_csv(matc_dir / 'train.csv')
+            self.test_data.to_csv(matc_dir / 'test.csv')
+            print("Dataset downloaded to:", matc_dir)
 
-        if not mimic_dir.exists() or not mimic_dir.is_dir():
-            items = os.listdir(downloaded_path)
-
-            for item in tqdm(items, desc='Moving dataset to project dir', unit='item'):
-                item_path = os.path.join(downloaded_path, item)
-                if os.path.isdir(item_path):
-                    # Move folders
-                    shutil.move(item_path, mimic_dir / item)
-                else:
-                    # Move files
-                    shutil.move(item_path, mimic_dir)
-
-        self.path = Path(mimic_dir) / 'mimic-iii-clinical-database-demo-1.4' / 'D_ICD_DIAGNOSES.csv'
-        print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
-
-        self.data = pd.read_csv(self.path)
-        self.class_to_idx = self.convert_class_to_idx(self.data)
-        self.class_to_class_names = self.convert_class_to_class_names(self.data)
-        self.train_data, self.val_data, self.test_data = self.split_dataset(train_size=0.7, val_size=0.2)
+        self.train_data, self.val_data = self.split_dataset(train_size=0.8)
         
         return self.train_data, self.val_data, self.test_data
-    
-    def convert_class_to_class_names(self, data):
-        class_to_class_names: Dict[str, list[str]] = {}
-        
-                
 
 
-    def split_dataset(self, train_size=0.7, val_size=0.2):
+    def split_dataset(self, train_size=0.8, shuffle=True):
         """Split into train, val, and test sets."""
-        total_len = len(self.data)
+        total_len = len(self.train_data)
         train_end = int(total_len * train_size)
-        val_end = int(total_len * (train_size + val_size))
 
-        train = self.data[:train_end]
-        val = self.data[train_end:val_end]
-        test = self.data[val_end:]
+        if shuffle:
+            self.train_data = self.train_data.sample(frac=1, random_state=42).reset_index(drop=True)
 
-        return train, val, test
+        train = self.train_data[:train_end]
+        val = self.train_data[train_end:]
 
-    def convert_class_to_idx(self, dataset: pd.DataFrame):
+        return train, val
+
+    def convert_class_to_idx(self, class_dict: dict):
         """
         Creates a dict of class name: index
         """
-        # NOTE: Rewriting the ICD with the first 3 letters as they're similar
-        for idx, icd_code in enumerate(dataset['icd9_code']):
-            dataset.loc[idx, 'icd9_code'] = icd_code[:3]
-
-        labels: set = set(dataset['icd9_code'])
-        class_to_idx: Dict[str, int] = {}
-
-        for idx, label in enumerate(labels):
-            class_to_idx[label] = idx
-
+        class_to_idx = {v: k for k, v in class_dict['condition_name'].items()}
+        label_to_idx = {v: k for k, v in class_dict['condition_label'].items()}
         return class_to_idx
+    
 
     def __len__(self):
-        return len(self.data)
+        return len(self.train_data)
     
 
     def __getitem__(self, idx):
-        if idx >= len(self.data) or idx < 0:
+        if idx >= len(self.train_data) or idx < 0:
             raise ValueError('Index out of bounds')
         
-        return self.data.iloc[idx]
+        return self.train_data.iloc[idx]
     
 
     def _preprocess_split(self, data: pd.DataFrame) -> pd.DataFrame:
         """
         Performs basic pre-processing on the dataset:
-        - Renames the LOCATION column to ABBREVIATION.
-        - Uses the integer stored in the ABBREVIATION column (now preserved as 'abbr_index') 
-            to replace the corresponding word in the TEXT with its abbreviation.
         - Converts all other words to lowercase.
         - Performs lemmatization and stop-word removal.
         
@@ -118,7 +95,8 @@ class MIMIC_III(BaseDataset):
 
         # Define a function to preprocess a single row
         def preprocess_row(row: pd.Series) -> pd.Series:
-            text: str = row['long_title']
+            class_name = self.idx_to_class[row['condition_label'] - 1]
+            text: str = row['medical_abstract']
             words = text.split()
 
             tmp_words = []
@@ -127,14 +105,15 @@ class MIMIC_III(BaseDataset):
 
             tmp = " ".join(tmp_words).strip()
             
-            # ✅ Remove punctuation using regex
+            # Remove punctuation using regex
             tmp = re.sub(r'[^\w\s]', '', tmp)
 
             # Apply lemmatization and stop-word removal (assumed to be static methods on MeDALSubset)
             processed = BaseDataset.lemmatizer(tmp)
             processed = BaseDataset.remove_stop_words(processed)
 
-            row['long_title'] = processed
+            row['medical_abstract'] = processed
+            row['condition_label'] = class_name
             return row
 
         # Use pandarallel to apply the row function in parallel
