@@ -1,3 +1,4 @@
+from pathlib import Path
 import re
 import shutil
 from typing import Dict, List, Tuple, Union, Any
@@ -38,26 +39,33 @@ class MeDALSubset(BaseDataset):
         """
         Loads the MeDAL dataset from Kaggle
         """
-        
-        downloaded_path = kagglehub.dataset_download("xhlulu/medal-emnlp")
-        print("Dataset downloaded to:", downloaded_path)
+        target_dir = ProjectPaths.DATASET_DIR.value / 'medal'
+        dataset_downloaded = target_dir.exists() and any(target_dir.rglob("*.csv"))
 
-        medal_dir = ProjectPaths.DATASET_DIR.value / 'medal'
+        if dataset_downloaded:
+            print(f"Dataset already exists at: {target_dir}")
+        else:
+            downloaded_path = kagglehub.dataset_download("xhlulu/medal-emnlp", force_download=True)
+            print("Dataset downloaded to:", downloaded_path)
+            print("Contents:")
+            print(os.listdir(downloaded_path))
 
-        if not medal_dir.exists() or not medal_dir.is_dir():
+            target_dir.mkdir(parents=True, exist_ok=True)
             items = os.listdir(downloaded_path)
 
             for item in tqdm(items, desc='Moving dataset to project dir', unit='item'):
                 item_path = os.path.join(downloaded_path, item)
-                if os.path.isdir(item_path):
-                    # Move folders
-                    shutil.move(item_path, medal_dir / item)
-                else:
-                    # Move files
-                    shutil.move(item_path, medal_dir)
+                shutil.move(item_path, target_dir / item)
 
-        self.path = medal_dir / 'pretrain_subset' # Points to pretrain_subset
-        print(f"Dataset moved to: {ProjectPaths.DATASET_DIR.value}")
+            print(f"Dataset moved to: {target_dir}")
+
+        # Find correct directory containing train.csv
+        possible_paths = list(target_dir.rglob("train.csv"))
+        if not possible_paths:
+            raise FileNotFoundError("train.csv not found in the dataset directory.")
+
+        self.path = Path('dataset/medal/pretrain_subset')  # Get the folder containing train.csv
+        print(f"Dataset CSVs found in: {self.path}")
 
         self.train_data = pd.read_csv(self.path / 'train.csv')
         self.val_data = pd.read_csv(self.path / 'valid.csv')
@@ -67,6 +75,8 @@ class MeDALSubset(BaseDataset):
         print(f'Total number of classes: {len(self.class_to_idx)}')
 
         return self.data, self.train_data, self.val_data, self.test_data
+
+
 
     def convert_class_to_idx(self, dataset: pd.DataFrame):
         """
@@ -157,6 +167,18 @@ class MeDALSubset(BaseDataset):
         # Use pandarallel to apply the row function in parallel
         data = data.parallel_apply(preprocess_row, axis=1)
         return data 
+
+    def _extract_context_from_tokens(self, text, location, context_window: int = 50):
+        start = max(0, (location - context_window) // 2)
+        end = min(len(text), (location + context_window) // 2)
+        return text[start:end]
+    
+    def extract_context_from_tokens(self, tokens_and_locations, context_window):
+        contexts = []
+        for tokens, location in tqdm(tokens_and_locations, 'Documents', len(tokens_and_locations)):
+            context = self._extract_context_from_tokens(tokens, location, context_window)
+            contexts.append(context)
+        return contexts
 
 
     def preprocess(self, splits=['train']) -> Union[pd.DataFrame, 
@@ -257,7 +279,11 @@ class MeDALSubset(BaseDataset):
                 raise ValueError('Invalid split passed. Refer to func. documentation.')
 
             text_data = data['TEXT']
-            abbreviation = data['ABBREVIATION']
+            if 'ABBREVIATION' in data.columns:
+                new_column = data['ABBREVIATION']
+            else:
+                new_column = data['LOCATION']
+
 
             tokenizer_instance = TokenizerFactory.get_tokenizer(
                 tokenizer_type,
@@ -271,7 +297,7 @@ class MeDALSubset(BaseDataset):
                 tokenized_data = text_data.parallel_apply(lambda text: tokenizer_instance.tokenize(text))
                 
                 # Zip tokenized text with the original abbreviation (string)
-                tokenized_splits.append(tuple(zip(tokenized_data, abbreviation)))
+                tokenized_splits.append(tuple(zip(tokenized_data, new_column)))
 
 
         if len(splits) == 1:
@@ -306,7 +332,6 @@ class MeDALSubset(BaseDataset):
         split_abbr = []
         split_ids = []
         
-        print('going to split data')
         for split in splits: 
             if tokenized_data is not None:
                 if split == 'train':

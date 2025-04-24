@@ -1,4 +1,4 @@
-from .model_architectures.lstm_self_attention import SelfAttention, LSTM_SelfAttention
+from .model_architectures.lstm_self_attention import LSTM_SelfAttention
 import torch.nn as nn
 from typing import Dict
 

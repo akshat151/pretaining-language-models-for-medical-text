@@ -6,9 +6,7 @@ embedding_models:
   glove:
     model_path: 'trained_models/embeddings/pretrained/glove.6B.100d.txt'
     embedding_dim: 100
-    vocab_size_limit: 400000
-    context_window: 10
-
+    vocab_size_limit: 1000000
 
 
 datasets:
@@ -17,21 +15,32 @@ datasets:
     data_path: "dataset/medal/pretrain_subset"
     preprocessed_data_path: "dataset/medal/preprocessed_subset"      
     num_classes: 22555
-    tokenizer: "Tokenizer_1"
     use_embeddings: true
     embedding_path: "/path/to/embedding_file"
     loss_function: "cross_entropy"
-    max_sequence_length: 256 # maxseq
-    context_window: 30
+    max_sequence_length: 50 # maxseq must match with context window to maintain consistency
+    context_window: 50
+
+  mimic-iv:
+    name: "mimic-iv"
+    data_path: "dataset/MIMIC-IV/pretrain_subset"
+    preprocessed_data_path: "dataset/MIMIC-IV/preprocessed_subset"      
+    num_classes: 3370
+    use_embeddings: true
+    loss_function: "binary_cross_entropy"
+    max_sequence_length: 200 # maxseq must match with context window to maintain consistency
+    context_window: 200
+    class_weights: 'dataset/MIMIC-IV/class_weights.json'
 
 model_names: ['lstm_and_self_attention']
 
 models:
   lstm_and_self_attention:
     hyperparameters: 
-      lstm_units: 2
-      lstm_hidden_dim: 256
-      dropout: 0.3
+      lstm_units: 1
+      lstm_hidden_dim: 128
+      num_attention_heads: 8
+      dropout: 0
     base_params:
 
     metrics:
@@ -43,11 +52,11 @@ models:
 training:
   hyperparameters:
     batch_size: 64
-    learning_rate: 0.009
+    learning_rate: 0.0001
   create_embedding_layer: True
 
   optimizer: 'adam'
-  weight_decay: 0.001
+  weight_decay: 0
 
   epochs: 10
   shuffle: True

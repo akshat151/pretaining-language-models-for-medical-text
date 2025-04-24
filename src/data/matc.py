@@ -37,9 +37,10 @@ class MATC(BaseDataset):
         self.class_to_idx = self.convert_class_to_idx(labels_dict)
         self.idx_to_class = {v: k for k, v in self.class_to_idx.items()}
         matc_dir = ProjectPaths.DATASET_DIR.value / 'MATC'
+        matc_dir.mkdir(parents=True, exist_ok=True)
+
 
         if not matc_dir.exists() or not matc_dir.is_dir():
-            os.mkdir(matc_dir)
             self.train_data.to_csv(matc_dir / 'train.csv')
             self.test_data.to_csv(matc_dir / 'test.csv')
             print("Dataset downloaded to:", matc_dir)
@@ -219,7 +220,8 @@ class MATC(BaseDataset):
             else:
                 raise ValueError('Invalid split passed. Refer to func. documentation.')
 
-            text_data = data['long_title']
+            text_data = data['medical_abstract']
+            label_data = data['condition_label']
 
             tokenizer_instance = TokenizerFactory.get_tokenizer(
                 tokenizer_type,
@@ -231,7 +233,7 @@ class MATC(BaseDataset):
             else:    
                 # Tokenize each piece of text
                 tokenized_data = text_data.parallel_apply(lambda text: tokenizer_instance.tokenize(text))
-                tokenized_splits.append(tokenized_data)
+                tokenized_splits.append(list(zip(tokenized_data, label_data)))
 
         if len(splits) == 1:
             return tokenized_splits[0]
@@ -241,8 +243,8 @@ class MATC(BaseDataset):
 
     def embed(self):
         """Embed using TF-IDF on context column."""
-        pass
+        raise NotImplementedError('embed func is WIP!')
 
     def save_embeddings(self, path: str):
         """Save embeddings as .npy and the vectorizer as a pickle file."""
-        print(f"✅ Embeddings saved to {path}.npy and vectorizer to {path}_vectorizer.pkl")
+        pass

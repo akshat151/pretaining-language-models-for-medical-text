@@ -242,6 +242,7 @@ class TrainableEmbedding(Embedding):
             else:
                 raise TypeError(f"Expected Word2Vec or FastText model, but got {type(self.model)}")
         print('Model saved')
+        
 
     def load(self) -> None:
         """Load a trained model from disk"""

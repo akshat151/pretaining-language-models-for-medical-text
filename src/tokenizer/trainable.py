@@ -37,7 +37,7 @@ class TrainableTokenizer(MyTokenizer):
     def __init__(self,
                  corpus: List[str],
                  algorithm: str,
-                 vocab_size: int = 30000,
+                 vocab_size: int = 400000,
                  min_frequency: int = 2,
                  special_tokens: Optional[List[str]] = None):
         """
