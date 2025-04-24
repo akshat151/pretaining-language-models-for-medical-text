@@ -1,0 +1,8 @@
+dataset/*
+**/__pycache__/
+**/.vscode/
+trained_models/embeddings/pretrained/*
+trained_models/embeddings/trained/*
+trained_models/models/*
+trained_models/tokenizers/*
+embeddings/*
