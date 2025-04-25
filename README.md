@@ -52,7 +52,7 @@ Before gaining access to the MIMIC-IV Notes dataset, we validated our pipeline o
 
 ---
 
-## 🛠️ Setup Instructions
+## Get Started
 
 ### Clone the repository
 
@@ -286,10 +286,3 @@ We evaluated three models end-to-end:
 | **Akshat Khare**      | Preprocessed, tokenized, and embedded the data, then trained a bidirectional LSTM model on both the MeDAL and MIMIC-IV datasets using PyTorch. |
 | **Prashanth Jaganathan** | Preprocessed, tokenized, and embedded the data, then trained an LSTM + Self-Attention model on both the MeDAL and MIMIC-IV datasets using PyTorch. |
 
----
-
-## 👨‍🔬 Authors
-
-- **Abhijit Kaluri**
-- **Akshat Khare**
-- **Prashanth Jaganathan**
